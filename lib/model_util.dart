@@ -1,6 +1,12 @@
 import 'dart:math';
 import 'package:uuid/uuid.dart';
 
+extension StringExtensions on String {
+  String capitalize() {
+    return '${this[0].toUpperCase()}${substring(1)}';
+  }
+}
+
 const intType = 'int';
 const doubleType = 'double';
 const stringType = 'String';
@@ -62,7 +68,7 @@ String getRandomString() {
 }
 
 bool getRandomBool() {
-  final i = Random(DateTime.now().millisecondsSinceEpoch).nextInt(1);
+  final i = Random(DateTime.now().millisecondsSinceEpoch).nextInt(2);
   return i == 0;
 }
 
@@ -115,14 +121,50 @@ Map<String, String> getRandomStringStringMap() {
   return stringStringMap;
 }
 
-/// This function generates a random model file with 50+ fields and a random number of functions.
+/// This function generates a random number up to 10 of mixins.
+/// 
+/// Returns the file content and a map of the mixin names and function names.
+(String, Map<String,List<String>>) generateMixins() {
+  final mixinMap = <String,List<String>>{};
+  final random = Random(DateTime.now().millisecondsSinceEpoch);
+  final numMixins = random.nextInt(20);
+  var mixinFileContent = '';
+  for (var i = 0; i < numMixins; i++) {
+    final mixinName = 'Mixin$i';
+    mixinFileContent += '''
+mixin $mixinName {
+''';
+    final numFunctions = random.nextInt(10);
+    final functions = <String>[];
+    for (var j = 0; j < numFunctions; j++) {
+      final functionName = 'function$j';
+      mixinFileContent += '''
+  void $functionName() {
+    // TODO: do something
+  }
+''';
+      functions.add(functionName);
+    }
+    mixinMap[mixinName] = functions;
+    mixinFileContent += '''
+}
+''';
+  }
+  return (mixinFileContent, mixinMap);
+}
+
+/// This function generates a random model file with a random number up to 100 of fields, a random number of mixins,
+/// and a random number of functions.
+/// 
 /// Returns the file content and the field map.
-(String, Map<String,String>) generateRandomModelContent(String modelName, String previousModelName) {
+(String, Map<String,String>) generateRandomModelContent({required String modelName,
+  required String previousModelSubDir, required String previousModelName, required Map<String,List<String>> mixinMap}) {
   final random = Random(DateTime.now().millisecondsSinceEpoch);
   final fieldMap = <String,String>{};
   var fieldStrings = '';
   final fields = <String>[];
-  for (var i = 0; i < 50; i++) {
+  final numFields = random.nextInt(100);
+  for (var i = 0; i < numFields; i++) {
     final dataType = dataTypes[random.nextInt(dataTypes.length)];
     final fieldName = 'field$i';
     fields.add('  $dataType $fieldName;');
@@ -134,19 +176,42 @@ Map<String, String> getRandomStringStringMap() {
   header += 'import \'package:analyzer_perf_test/model_util.dart\';\n';
   if (previousModelName.isNotEmpty) {
     fields.add('  $previousModelName model;');
-    header += 'import \'package:analyzer_perf_test/models/generated/${previousModelName.toLowerCase()}.dart\';\n';
+    header += 'import \'package:analyzer_perf_test/models/generated/$previousModelSubDir/${previousModelName.toLowerCase()}.dart\';\n';
   }
+  var mixinWiths = '';
+  var mixinFunctionCalls = '';
+  final mixinCounts = [0,1,2,3];
+  final numMixins = mixinCounts[random.nextInt(mixinCounts.length)];
+  for (var i = 0; i < numMixins; i++) {
+    if (i == 0) {
+      header += 'import \'package:analyzer_perf_test/models/generated/mixins/generated_mixins.dart\';\n';
+      mixinWiths += ' with ';
+    }
+    final index = random.nextInt(mixinMap.length);
+    final mixinEntry = mixinMap.entries.elementAt(index);
+    final mixinName = mixinEntry.key;
+    if (i != 0) {
+      mixinWiths += ', ';
+    }
+    mixinWiths += mixinName;
+    final mixinFunctions = mixinEntry.value;
+    for (var functionName in mixinFunctions) {
+      mixinFunctionCalls += '''
 
+      void callMixin${functionName.capitalize()}() {
+        $functionName();
+      }
+'''; 
+    }
+  }
   var modelFileContent = '''
 $header
-class $modelName {
+class $modelName$mixinWiths {
 ${fields.join('\n')}
-
   $modelName({
 ${fields.map((field) => '    required this.${field.split(' ').last.replaceAll(';', '')},').join('\n')}
   });
 ''';
-
   int numFunctions = random.nextInt(500) + 1;
   for (int i = 0; i < numFunctions; i++) {
     final type = dataTypes[random.nextInt(dataTypes.length)];
@@ -156,6 +221,7 @@ ${fields.map((field) => '    required this.${field.split(' ').last.replaceAll(';
   }
 ''';
   }
+  modelFileContent += mixinFunctionCalls;
   modelFileContent += '''
   @override
   String toString() {
@@ -163,6 +229,5 @@ ${fields.map((field) => '    required this.${field.split(' ').last.replaceAll(';
   }
 }
 ''';
-
   return (modelFileContent, fieldMap);
 }

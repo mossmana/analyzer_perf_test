@@ -1,32 +1,58 @@
+import 'dart:core';
 import 'dart:io' show Directory, File;
+import 'dart:math';
 import 'package:analyzer_perf_test/model_util.dart';
+import 'package:uuid/uuid.dart';
 
-/// Generate the given number of random model classes
+
+/// Generate the given number of random model classes. File will be stored
+/// in a random folder in models/generated.
 (List<String>, List<Map<String,String>>) generate({required int num}) {
   final generatedPath = '${Directory.current.path}/../models/generated';
+  final subDirectories = <String>[Uuid().v4()];
   // Clear the contents
   final dir = Directory(generatedPath);
   dir.deleteSync(recursive: true);
   dir.createSync();
   var previousModelName = '';
-  var libraryFileContent = '';
-  final modelNames = List<String>.empty(growable: true);
-  final modelFieldMaps = List<Map<String,String>>.empty(growable: true);
+  var previousModelSubDir = '';
+  var modelLibraryFileContent = '';
+  final modelNames = <String>[];
+  final modelFieldMaps = <Map<String,String>>[];
+  final (mixinFilecontent, mixinMap) = generateMixins(); 
+  final mixinFilePath = '$generatedPath/mixins/generated_mixins.dart';
+  File(mixinFilePath).create(recursive: true).then((file) {
+    file.writeAsStringSync(mixinFilecontent);
+  });
   for (var i = 0; i < num; i++) {
     final modelName = 'Model$i';
+    // keep track of all model names
     modelNames.add(modelName);
     final modelFileName = 'model$i.dart';
-    final (modelFileContent, modelFields) = generateRandomModelContent(modelName, previousModelName);
+    final (modelFileContent, modelFields) = generateRandomModelContent(modelName: modelName, 
+      previousModelSubDir: previousModelSubDir, previousModelName: previousModelName, mixinMap: mixinMap);
+    // keep track of all model fields
     modelFieldMaps.add(modelFields);
-    final modelFilePath = '$generatedPath/$modelFileName';
-    final modelFile = File(modelFilePath);
-    modelFile.writeAsStringSync(modelFileContent);
+    final createNewSubDir = getRandomBool();
+    dynamic subDir;
+    // randomly decide to use an existing or new subdirectory
+    if (createNewSubDir) {
+      subDir = Uuid().v4();
+      subDirectories.add(subDir);
+    } else {
+      subDir = subDirectories[Random().nextInt(subDirectories.length)];
+    }
+    previousModelSubDir = subDir;
+    final modelFilePath = '$generatedPath/$subDir/$modelFileName';
+    File(modelFilePath).create(recursive: true).then((file) {
+      file.writeAsStringSync(modelFileContent);
+    });
     previousModelName = modelName;
-    final libraryFileName = 'generated_models.dart';
-    libraryFileContent += 'export \'$modelFileName\';\n';
-    final libraryFilePath = '$generatedPath/$libraryFileName';
+    final modelLibraryFileName = 'generated_models.dart';
+    modelLibraryFileContent += 'export \'$subDir/$modelFileName\';\n';
+    final libraryFilePath = '$generatedPath/$modelLibraryFileName';
     final libraryFile = File(libraryFilePath);
-    libraryFile.writeAsStringSync(libraryFileContent);
+    libraryFile.writeAsStringSync(modelLibraryFileContent);
   }
   return (modelNames, modelFieldMaps);
 }
